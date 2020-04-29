@@ -1,16 +1,11 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
 import numpy as np
-from PIL import Image
 import cv2
 import os
 
-PATH_to_SAVE = 'weights/'
 
-
-__all__ = ['darknet_19', 'darknet_53', 'darknet_tiny', 'darknet_lite']
 
 class Conv_BN_LeakyReLU(nn.Module):
     def __init__(self, in_channels, out_channels, ksize, padding=0, stride=1, dilation=1):
@@ -40,7 +35,81 @@ class resblock(nn.Module):
             x = module(x) + x
         return x
 
+class DarkNet_19(nn.Module):
+    def __init__(self, num_classes=1000):
+        print("Initializing the darknet19 network ......")
+        
+        super(DarkNet_19, self).__init__()
+        # backbone network : DarkNet-19
+        # output : stride = 2, c = 32
+        self.conv_1 = nn.Sequential(
+            Conv_BN_LeakyReLU(3, 32, 3, 1),
+            nn.MaxPool2d((2,2), 2),
+        )
+
+        # output : stride = 4, c = 64
+        self.conv_2 = nn.Sequential(
+            Conv_BN_LeakyReLU(32, 64, 3, 1),
+            nn.MaxPool2d((2,2), 2)
+        )
+
+        # output : stride = 8, c = 128
+        self.conv_3 = nn.Sequential(
+            Conv_BN_LeakyReLU(64, 128, 3, 1),
+            Conv_BN_LeakyReLU(128, 64, 1),
+            Conv_BN_LeakyReLU(64, 128, 3, 1),
+            nn.MaxPool2d((2,2), 2)
+        )
+
+        # output : stride = 8, c = 256
+        self.conv_4 = nn.Sequential(
+            Conv_BN_LeakyReLU(128, 256, 3, 1),
+            Conv_BN_LeakyReLU(256, 128, 1),
+            Conv_BN_LeakyReLU(128, 256, 3, 1),
+        )
+
+        # output : stride = 16, c = 512
+        self.maxpool_4 = nn.MaxPool2d((2, 2), 2)
+        self.conv_5 = nn.Sequential(
+            Conv_BN_LeakyReLU(256, 512, 3, 1),
+            Conv_BN_LeakyReLU(512, 256, 1),
+            Conv_BN_LeakyReLU(256, 512, 3, 1),
+            Conv_BN_LeakyReLU(512, 256, 1),
+            Conv_BN_LeakyReLU(256, 512, 3, 1),
+        )
+        
+        # output : stride = 32, c = 1024
+        self.maxpool_5 = nn.MaxPool2d((2, 2), 2)
+        self.conv_6 = nn.Sequential(
+            Conv_BN_LeakyReLU(512, 1024, 3, 1),
+            Conv_BN_LeakyReLU(1024, 512, 1),
+            Conv_BN_LeakyReLU(512, 1024, 3, 1),
+            Conv_BN_LeakyReLU(1024, 512, 1),
+            Conv_BN_LeakyReLU(512, 1024, 3, 1)
+        )
+
+        self.conv_7 = nn.Conv2d(1024, 1000, 1)
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+
+    def forward(self, x):
+        x = self.conv_1(x)
+        x = self.conv_2(x)
+        x = self.conv_3(x)
+        x = self.conv_4(x)
+        x = self.conv_5(self.maxpool_4(x))
+        x = self.conv_6(self.maxpool_5(x))
+
+        x = self.conv_7(x)
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        return x
+
 class DarkNet_53(nn.Module):
+    """
+    YOLOv3 model module. The module list is defined by create_yolov3_modules function. \
+    The network returns loss values from three YOLO layers during training \
+    and detection results during test.
+    """
     def __init__(self, num_classes=1000):
         super(DarkNet_53, self).__init__()
         # stride = 2
@@ -84,74 +153,6 @@ class DarkNet_53(nn.Module):
         x = x.view(x.size(0), -1)
         x = self.fc(x)
 
-        return x
-
-class DarkNet_19(nn.Module):
-    def __init__(self, num_classes=1000):
-        
-        super(DarkNet_19, self).__init__()
-        # backbone network : DarkNet-19
-        # output : stride = 2, c = 32
-        self.conv_1 = nn.Sequential(
-            Conv_BN_LeakyReLU(3, 32, 3, 1),
-            nn.MaxPool2d((2,2), 2),
-        )
-
-        # output : stride = 4, c = 64
-        self.conv_2 = nn.Sequential(
-            Conv_BN_LeakyReLU(32, 64, 3, 1),
-            nn.MaxPool2d((2,2), 2)
-        )
-
-        # output : stride = 8, c = 128
-        self.conv_3 = nn.Sequential(
-            Conv_BN_LeakyReLU(64, 128, 3, 1),
-            Conv_BN_LeakyReLU(128, 64, 1),
-            Conv_BN_LeakyReLU(64, 128, 3, 1),
-            nn.MaxPool2d((2,2), 2)
-        )
-
-        # output : stride = 16, c = 256
-        self.conv_4 = nn.Sequential(
-            Conv_BN_LeakyReLU(128, 256, 3, 1),
-            Conv_BN_LeakyReLU(256, 128, 1),
-            Conv_BN_LeakyReLU(128, 256, 3, 1),
-            nn.MaxPool2d((2,2), 2)
-        )
-
-        # output : stride = 32, c = 512
-        self.conv_5 = nn.Sequential(
-            Conv_BN_LeakyReLU(256, 512, 3, 1),
-            Conv_BN_LeakyReLU(512, 256, 1),
-            Conv_BN_LeakyReLU(256, 512, 3, 1),
-            Conv_BN_LeakyReLU(512, 256, 1),
-            Conv_BN_LeakyReLU(256, 512, 3, 1),
-            nn.MaxPool2d((2,2), 2)
-        )
-
-        # output : stride = 32, c = 1024
-        self.conv_6 = nn.Sequential(
-            Conv_BN_LeakyReLU(512, 1024, 3, 1),
-            Conv_BN_LeakyReLU(1024, 512, 1),
-            Conv_BN_LeakyReLU(512, 1024, 3, 1),
-            Conv_BN_LeakyReLU(1024, 512, 1),
-            Conv_BN_LeakyReLU(512, 1024, 3, 1)
-        )
-
-        self.conv_7 = nn.Conv2d(1024, 1000, 1)
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-
-    def forward(self, x):
-        x = self.conv_1(x)
-        x = self.conv_2(x)
-        x = self.conv_3(x)
-        x = self.conv_4(x)
-        x = self.conv_5(x)
-        x = self.conv_6(x)
-
-        x = self.conv_7(x)
-        x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
         return x
 
 class DarkNet_Tiny(nn.Module):
@@ -204,65 +205,7 @@ class DarkNet_Tiny(nn.Module):
         x = x.view(x.size(0), -1)
         return x
 
-class DarkNet_Lite(nn.Module):
-    def __init__(self, num_classes=1000):
-        
-        super(DarkNet_Lite, self).__init__()
-        # backbone network : DarkNet-Light
-        # output : stride = 2, c = 16
-        self.conv_1 = nn.Sequential(
-            Conv_BN_LeakyReLU(3, 16, 3, 1),
-            Conv_BN_LeakyReLU(16, 16, 3, padding=1, stride=2)
-        )
-
-        # output : stride = 4, c = 32
-        self.conv_2 = nn.Sequential(
-            Conv_BN_LeakyReLU(16, 32, 3, 1),
-            Conv_BN_LeakyReLU(32, 32, 3, padding=1, stride=2)
-        )
-
-        # output : stride = 8, c = 64
-        self.conv_3 = nn.Sequential(
-            Conv_BN_LeakyReLU(32, 64, 3, 1),
-            Conv_BN_LeakyReLU(64, 64, 3, padding=1, stride=2),
-        )
-
-        # output : stride = 16, c = 128
-        self.conv_4 = nn.Sequential(
-            Conv_BN_LeakyReLU(64, 128, 3, 1),
-            Conv_BN_LeakyReLU(128, 128, 3, padding=1, stride=2),
-        )
-
-        # output : stride = 32, c = 256
-        self.conv_5 = nn.Sequential(
-            Conv_BN_LeakyReLU(128, 256, 3, 1),
-            Conv_BN_LeakyReLU(256, 256, 3, padding=1, stride=2),
-        )
-
-        # output : stride = 32, c = 256
-        self.conv_6 = nn.Sequential(
-            Conv_BN_LeakyReLU(256, 128, 1),
-            Conv_BN_LeakyReLU(128, 256, 3, padding=1)
-        )
-
-        self.conv_7 = nn.Conv2d(256, 1000, 1)
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-
-    def forward(self, x):
-        x = self.conv_1(x)
-        x = self.conv_2(x)
-        x = self.conv_3(x)
-        x = self.conv_4(x)
-        x = self.conv_5(x)
-        x = self.conv_6(x)
-
-        x = self.conv_7(x)
-        x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
-        return x
-
-
-def darknet_19(pretrained=False, **kwargs):
+def darknet19(pretrained=False, **kwargs):
     """Constructs a darknet-19 model.
 
     Args:
@@ -270,10 +213,12 @@ def darknet_19(pretrained=False, **kwargs):
     """
     model = DarkNet_19()
     if pretrained:
-        model.load_state_dict('path_to_model')
+        path_to_dir = os.path.dirname(os.path.abspath(__file__))
+        print('Loading the darknet19 ...')
+        model.load_state_dict(torch.load(path_to_dir + '/weights/darknet19_72.96.pth', map_location='cuda'), strict=False)
     return model
 
-def darknet_53(pretrained=False, **kwargs):
+def darknet53(pretrained=False, **kwargs):
     """Constructs a darknet-53 model.
 
     Args:
@@ -281,7 +226,9 @@ def darknet_53(pretrained=False, **kwargs):
     """
     model = DarkNet_53()
     if pretrained:
-        model.load_state_dict('path_to_model')
+        path_to_dir = os.path.dirname(os.path.abspath(__file__))
+        print('Loading the darknet53 ...')
+        model.load_state_dict(torch.load(path_to_dir + '/weights/darknet53_75.42.pth', map_location='cuda'), strict=False)
     return model
 
 def darknet_tiny(pretrained=False, **kwargs):
@@ -292,16 +239,7 @@ def darknet_tiny(pretrained=False, **kwargs):
     """
     model = DarkNet_Tiny()
     if pretrained:
-        model.load_state_dict('path_to_model')
-    return model
-
-def darknet_lite(pretrained=False, **kwargs):
-    """Constructs a darknet-lite model.
-
-    Args:
-        pretrained (bool): If True, returns a model pre-trained on ImageNet
-    """
-    model = DarkNet_Lite()
-    if pretrained:
-        model.load_state_dict('path_to_model')
+        path_to_dir = os.path.dirname(os.path.abspath(__file__))
+        print('Loading the darknet_tiny ...')
+        model.load_state_dict(torch.load(path_to_dir + '/weights/darknet_tiny_63.50_85.06.pth', map_location='cuda'), strict=False)
     return model
