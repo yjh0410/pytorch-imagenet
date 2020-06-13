@@ -99,8 +99,8 @@ class DarkNet_19(nn.Module):
         x = self.conv_5(self.maxpool_4(x))
         x = self.conv_6(self.maxpool_5(x))
 
-        x = self.conv_7(x)
         x = self.avgpool(x)
+        x = self.conv_7(x)
         x = x.view(x.size(0), -1)
         return x
 
