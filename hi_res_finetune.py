@@ -31,7 +31,7 @@ def fine_tune(name, batch_size, epochs, lr, resize, data):
     workers = 4
     start_epoch = 0
     momentum = 0.9
-    weight_decay = 1e-4
+    weight_decay = 5e-4
     print_freq = 10
     best_acc1 = 0
     
@@ -257,7 +257,7 @@ def accuracy(output, target, topk=(1,)):
 if __name__ == "__main__":
     # configuration
     ft_cfg = {
-        'batch_size': 32,
+        'batch_size': 128,
         'resize': 448,
         'max_epoch': 10,
         'lr': 1e-3,
