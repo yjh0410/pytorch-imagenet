@@ -24,20 +24,20 @@ model_names = sorted(name for name in models.__dict__
     and callable(models.__dict__[name]))
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-parser.add_argument('data', metavar='DIR', default='/home/k545/object-detection/myYOLO/backbone/imagenet/',
+parser.add_argument('data', metavar='DIR', default='./data/imagenet/',
                     help='path to dataset')
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                     choices=model_names,
                     help='model architecture: ' +
                         ' | '.join(model_names) +
                         ' (default: resnet18)')
-parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
+parser.add_argument('-j', '--workers', default=8, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--epochs', default=90, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
-parser.add_argument('-b', '--batch-size', default=256, type=int,
+parser.add_argument('-b', '--batch-size', default=64, type=int,
                     metavar='N',
                     help='mini-batch size (default: 256), this is the total '
                          'batch size of all GPUs on the current node when '
@@ -63,7 +63,7 @@ parser.add_argument('--save_folder', default='weights/', type=str,
                     help='path to save model. ')
 
 best_acc1 = 0
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def main():
@@ -110,7 +110,7 @@ def main_worker(args):
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
     # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,  milestones=[args.epochs//3, args.epochs//3*2], gamma=0.1)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,  milestones=[30, 60], gamma=0.1)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,  milestones=[60, 90], gamma=0.1)
 
     # optionally resume from a checkpoint
     if args.resume:
@@ -223,6 +223,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 
         if i % args.print_freq == 0:
             progress.display(i)
+
 
 def validate(val_loader, model, criterion, args):
     batch_time = AverageMeter('Time', ':6.3f')

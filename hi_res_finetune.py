@@ -28,7 +28,7 @@ model_names = sorted(name for name in models.__dict__
 
 def fine_tune(name, batch_size, epochs, lr, resize, data):
     # basic 
-    workers = 4
+    workers = 8
     start_epoch = 0
     momentum = 0.9
     weight_decay = 5e-4
@@ -256,16 +256,16 @@ def accuracy(output, target, topk=(1,)):
 
 if __name__ == "__main__":
     # configuration
-    ft_cfg = {
-        'batch_size': 128,
+    hi_res_ft_cfg = {
+        'batch_size': 64,
         'resize': 448,
         'max_epoch': 10,
         'lr': 1e-3,
         'data_path': "./data/imagenet/",
-        'model_name': 'darknet53'
+        'model_name': 'cspdarknet_tiny'
     }
 
     print("----------------------------------------Fine-tune--------------------------------------------")
     print("Firstly, before training OD, we need to fine-tune backbone network on high resolution images.")
-    fine_tune(name=ft_cfg['model_name'], batch_size=ft_cfg['batch_size'], epochs=ft_cfg['max_epoch'],
-                lr=ft_cfg['lr'], resize=ft_cfg['resize'], data=ft_cfg['data_path'])
+    fine_tune(name=hi_res_ft_cfg['model_name'], batch_size=hi_res_ft_cfg['batch_size'], epochs=hi_res_ft_cfg['max_epoch'],
+                lr=hi_res_ft_cfg['lr'], resize=hi_res_ft_cfg['resize'], data=hi_res_ft_cfg['data_path'])
