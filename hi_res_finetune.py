@@ -59,7 +59,7 @@ def fine_tune(name, batch_size, epochs, lr, resize, data):
     optimizer = torch.optim.SGD(model.parameters(), lr,
                                 momentum=momentum,
                                 weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,  milestones=[epochs//3, epochs//3*2], gamma=0.1)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,  milestones=[5, 8], gamma=0.1)
 
 
     # Data loading code

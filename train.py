@@ -67,10 +67,12 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def main():
+    global save_folder
     args = parser.parse_args()
 
-    if not os.path.exists(args.save_folder):
-        os.mkdir(args.save_folder)
+    save_folder = os.path.join(args.save_folder, args.arch)
+    if not os.path.exists(save_folder):
+        os.mkdir(save_folder)
 
     if args.seed is not None:
         random.seed(args.seed)
@@ -87,7 +89,7 @@ def main():
 
 
 def main_worker(args):
-    global best_acc1
+    global best_acc1, save_folder
     
     # create model
     if args.pretrained:
@@ -106,16 +108,19 @@ def main_worker(args):
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().to(device)
 
-    optimizer = torch.optim.SGD(model.parameters(), args.lr,
-                                momentum=args.momentum,
-                                weight_decay=args.weight_decay)
-    # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,  milestones=[args.epochs//3, args.epochs//3*2], gamma=0.1)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,  milestones=[60, 90], gamma=0.1)
-
     # optionally resume from a checkpoint
     if args.resume:
         print('continue training ...')
         model.load_state_dict(torch.load(args.resume))
+
+    optimizer = torch.optim.SGD(model.parameters(), args.lr,
+                                momentum=args.momentum,
+                                weight_decay=args.weight_decay)
+                                
+    # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,  milestones=[args.epochs//3, args.epochs//3*2], gamma=0.1)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,  milestones=[50, 70], gamma=0.1)
+    lr_epoch = [50, 70]
+    lr = args.lr
 
     cudnn.benchmark = True
 
@@ -153,11 +158,11 @@ def main_worker(args):
         return
 
     for epoch in range(args.start_epoch, args.epochs):
-        #adjust_learning_rate(optimizer, epoch, args)
+        lr = adjust_learning_rate(optimizer, epoch, lr_epoch, lr, gamma=0.1)
         # acc1 = validate(val_loader, model, criterion, args)
         # exit()
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch, args)
+        train(train_loader, model, criterion, optimizer, epoch, lr, args)
 
         # evaluate on validation set
         acc1 = validate(val_loader, model, criterion, args)
@@ -166,7 +171,7 @@ def main_worker(args):
         is_best = acc1 > best_acc1
         best_acc1 = max(acc1, best_acc1)
         if is_best:
-            torch.save(model.state_dict(), args.save_folder+'/'+ str(args.arch) + '_' + str(epoch + 1)+'_'+str(acc1.item())+'.pth')
+            torch.save(model.state_dict(), save_folder+'/'+ str(args.arch) + '_' + str(epoch + 1)+'_'+str(acc1.item())+'.pth')
 
         # save_checkpoint({
         #     'epoch': epoch + 1,
@@ -176,10 +181,10 @@ def main_worker(args):
         #     'optimizer' : optimizer.state_dict(),
         # }, is_best)
 
-        scheduler.step()
+        # scheduler.step()
 
 
-def train(train_loader, model, criterion, optimizer, epoch, args):
+def train(train_loader, model, criterion, optimizer, epoch, lr, args):
     print("start training ......")
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
@@ -188,7 +193,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
     top5 = AverageMeter('Acc@5', ':6.2f')
     progress = ProgressMeter(
         len(train_loader),
-        [batch_time, data_time, losses, top1, top5],
+        [batch_time, data_time, losses, top1, top5, ' [learning rate : ] %f' % lr],
         prefix="Epoch: [{}]".format(epoch))
 
     # switch to train mode
@@ -211,6 +216,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         losses.update(loss.item(), images.size(0))
         top1.update(acc1[0], images.size(0))
         top5.update(acc5[0], images.size(0))
+        
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -315,11 +321,15 @@ class ProgressMeter(object):
         return '[' + fmt + '/' + fmt.format(num_batches) + ']'
 
 
-def adjust_learning_rate(optimizer, epoch, args):
+def adjust_learning_rate(optimizer, epoch, lr_epoch, lr, gamma=0.1):
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
-    lr = args.lr * (0.1 ** (epoch // 30))
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
+    if epoch in lr_epoch:
+        print('lr decay ...')
+        lr = lr * gamma
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr
+
+    return lr
 
 
 def accuracy(output, target, topk=(1,)):
