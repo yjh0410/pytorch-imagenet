@@ -1,15 +1,27 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-import cv2
 import os
 
 
-class Hardswish(nn.Module):
-    @staticmethod
-    def forward(x):
-        return x * F.relu6(x + 3.0) / 6.0
+@torch.jit.script
+def mish(x):
+    # from https://github.com/digantamisra98/Mish/blob/master/Mish/Torch/mish.py
+    '''
+    Applies the mish function element-wise:
+    mish(x) = x * tanh(softplus(x)) = x * tanh(ln(1 + exp(x)))
+    See additional documentation for mish class.
+    '''
+    return x * torch.tanh(F.softplus(x))
+
+
+class Mish(nn.Module):
+    # from https://github.com/digantamisra98/Mish/blob/master/Mish/Torch/mish.py
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        return mish(x)
 
 
 class Conv(nn.Module):
@@ -18,7 +30,7 @@ class Conv(nn.Module):
         self.convs = nn.Sequential(
             nn.Conv2d(c1, c2, k, stride=s, padding=p, dilation=d, groups=g),
             nn.BatchNorm2d(c2),
-            Hardswish() if act else nn.Identity()
+            Mish() if act else nn.Identity()
         )
 
     def forward(self, x):
@@ -41,20 +53,6 @@ class ResBlock(nn.Module):
         for module in self.module_list:
             x = module(x) + x
         return x
-
-
-# Copy from yolov5
-class Focus(nn.Module):
-    """
-        Focus module proposed by yolov5.
-    """
-    # Focus wh information into c-space
-    def __init__(self, c1, c2, k=1, p=0, s=1, g=1, act=True):  # ch_in, ch_out, kernel, stride, padding, groups
-        super(Focus, self).__init__()
-        self.conv = Conv(c1 * 4, c2, k=k, s=s, p=p, g=g, act=act)
-
-    def forward(self, x):  # x(B, C, H, W) -> y(B, 4C, H/2, W/2)
-        return self.conv(torch.cat([x[..., ::2, ::2], x[..., 1::2, ::2], x[..., ::2, 1::2], x[..., 1::2, 1::2]], 1))
 
 
 # Copy from yolov5
@@ -90,28 +88,30 @@ class BottleneckCSP(nn.Module):
         return self.cv4(self.act(self.bn(torch.cat((y1, y2), dim=1))))
 
 
-class CSPDarknet_large(nn.Module):
+# CSPDarknet
+class CSPDarknet_X(nn.Module):
     """
-    CSPDarknet_large.
+    CSPDarknet_X.
     """
-    def __init__(self, cfg='l', num_classes=1000):
-        super(CSPDarknet_large, self).__init__()
+    def __init__(self, num_classes=1000):
+        super(CSPDarknet_X, self).__init__()
             
         self.layer_1 = nn.Sequential(
-            Focus(c1=3, c2=64, k=3, p=1),           
+            Conv(c1=3, c2=32, k=3, p=1),
+            Conv(c1=32, c2=64, k=3, p=1, s=2),       
             ResBlock(c1=64, n=1)                    # P1/2
         )
         self.layer_2 = nn.Sequential(
             Conv(c1=64, c2=128, k=3, p=1, s=2),     
-            BottleneckCSP(c1=128, c2=128, n=2)      # P2/4
+            BottleneckCSP(c1=128, c2=128, n=4)      # P2/4
         )
         self.layer_3 = nn.Sequential(
             Conv(c1=128, c2=256, k=3, p=1, s=2),    
-            BottleneckCSP(c1=256, c2=256, n=8)      # P3/8
+            BottleneckCSP(c1=256, c2=256, n=12)      # P3/8
         )
         self.layer_4 = nn.Sequential(
             Conv(c1=256, c2=512, k=3, p=1, s=2),    
-            BottleneckCSP(c1=512, c2=512, n=8)      # P4/16
+            BottleneckCSP(c1=512, c2=512, n=12)      # P4/16
         )
         self.layer_5 = nn.Sequential(
             Conv(c1=512, c2=1024, k=3, p=1, s=2),   
@@ -135,12 +135,59 @@ class CSPDarknet_large(nn.Module):
         return x
 
 
+class CSPDarknet_large(nn.Module):
+    """
+    CSPDarknet_large.
+    """
+    def __init__(self, num_classes=1000):
+        super(CSPDarknet_large, self).__init__()
+            
+        self.layer_1 = nn.Sequential(
+            Conv(c1=3, c2=32, k=3, p=1),
+            Conv(c1=32, c2=64, k=3, p=1, s=2),       
+            ResBlock(c1=64, n=1)                    # P1/2
+        )
+        self.layer_2 = nn.Sequential(
+            Conv(c1=64, c2=128, k=3, p=1, s=2),     
+            BottleneckCSP(c1=128, c2=128, n=3)      # P2/4
+        )
+        self.layer_3 = nn.Sequential(
+            Conv(c1=128, c2=256, k=3, p=1, s=2),    
+            BottleneckCSP(c1=256, c2=256, n=9)      # P3/8
+        )
+        self.layer_4 = nn.Sequential(
+            Conv(c1=256, c2=512, k=3, p=1, s=2),    
+            BottleneckCSP(c1=512, c2=512, n=9)      # P4/16
+        )
+        self.layer_5 = nn.Sequential(
+            Conv(c1=512, c2=1024, k=3, p=1, s=2),   
+            BottleneckCSP(c1=1024, c2=1024, n=3)    # P5/32
+        )
+
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.fc = nn.Linear(1024, num_classes)
+
+    def forward(self, x, targets=None):
+        x = self.layer_1(x)
+        x = self.layer_2(x)
+        x = self.layer_3(x)
+        x = self.layer_4(x)
+        x = self.layer_5(x)
+
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+
+        return x
+
+
 class CSPDarknet_medium(nn.Module):
-    def __init__(self, cfg='l', num_classes=1000):
+    def __init__(self, num_classes=1000):
         super(CSPDarknet_medium, self).__init__()
             
         self.layer_1 = nn.Sequential(
-            Focus(c1=3, c2=64, k=3, p=1),           
+            Conv(c1=3, c2=32, k=3, p=1),
+            Conv(c1=32, c2=64, k=3, p=1, s=2),       
             ResBlock(c1=64, n=1)                    # P1/2
         )
         self.layer_2 = nn.Sequential(
@@ -149,11 +196,11 @@ class CSPDarknet_medium(nn.Module):
         )
         self.layer_3 = nn.Sequential(
             Conv(c1=128, c2=256, k=3, p=1, s=2),    
-            BottleneckCSP(c1=256, c2=256, n=2)      # P3/8
+            BottleneckCSP(c1=256, c2=256, n=6)      # P3/8
         )
         self.layer_4 = nn.Sequential(
             Conv(c1=256, c2=512, k=3, p=1, s=2),    
-            BottleneckCSP(c1=512, c2=512, n=2)      # P4/16
+            BottleneckCSP(c1=512, c2=512, n=6)      # P4/16
         )
         self.layer_5 = nn.Sequential(
             Conv(c1=512, c2=1024, k=3, p=1, s=2),   
@@ -178,11 +225,12 @@ class CSPDarknet_medium(nn.Module):
 
 
 class CSPDarknet_small(nn.Module):
-    def __init__(self, cfg='l', num_classes=1000):
+    def __init__(self, num_classes=1000):
         super(CSPDarknet_small, self).__init__()
             
         self.layer_1 = nn.Sequential(
-            Focus(c1=3, c2=64, k=3, p=1),           
+            Conv(c1=3, c2=32, k=3, p=1),
+            Conv(c1=32, c2=64, k=3, p=1, s=2),       
             ResBlock(c1=64, n=1)                    # P1/2
         )
         self.layer_2 = nn.Sequential(
@@ -191,11 +239,11 @@ class CSPDarknet_small(nn.Module):
         )
         self.layer_3 = nn.Sequential(
             Conv(c1=128, c2=256, k=3, p=1, s=2),    
-            BottleneckCSP(c1=256, c2=256, n=1)      # P3/8
+            BottleneckCSP(c1=256, c2=256, n=3)      # P3/8
         )
         self.layer_4 = nn.Sequential(
             Conv(c1=256, c2=512, k=3, p=1, s=2),    
-            BottleneckCSP(c1=512, c2=512, n=1)      # P4/16
+            BottleneckCSP(c1=512, c2=512, n=3)      # P4/16
         )
         self.layer_5 = nn.Sequential(
             Conv(c1=512, c2=1024, k=3, p=1, s=2),   
@@ -219,12 +267,13 @@ class CSPDarknet_small(nn.Module):
         return x
 
 
-class CSPDarknet_slim(nn.Module):
-    def __init__(self, cfg='l', num_classes=1000):
-        super(CSPDarknet_slim, self).__init__()
+class CSPDarknet_tiny(nn.Module):
+    def __init__(self, num_classes=1000):
+        super(CSPDarknet_tiny, self).__init__()
             
         self.layer_1 = nn.Sequential(
-            Focus(c1=3, c2=32, k=3, p=1),           
+            Conv(c1=3, c2=16, k=3, p=1),
+            Conv(c1=16, c2=32, k=3, p=1, s=2),       
             ResBlock(c1=32, n=1)                    # P1/2
         )
         self.layer_2 = nn.Sequential(
@@ -261,46 +310,18 @@ class CSPDarknet_slim(nn.Module):
         return x
 
 
-class CSPDarknet_tiny(nn.Module):
-    def __init__(self, cfg='l', num_classes=1000):
-        super(CSPDarknet_tiny, self).__init__()
-            
-        self.layer_1 = nn.Sequential(
-            Focus(c1=3, c2=32, k=3, p=1),           
-            ResBlock(c1=32, n=1)                    # P1/2
-        )
-        self.layer_2 = nn.Sequential(
-            nn.MaxPool2d((2, 2), 2),     
-            BottleneckCSP(c1=32, c2=64, n=1)      # P2/4
-        )
-        self.layer_3 = nn.Sequential(
-            nn.MaxPool2d((2, 2), 2),     
-            BottleneckCSP(c1=64, c2=128, n=1)      # P3/8
-        )
-        self.layer_4 = nn.Sequential(
-            nn.MaxPool2d((2, 2), 2),     
-            BottleneckCSP(c1=128, c2=256, n=1)      # P4/16
-        )
-        self.layer_5 = nn.Sequential(
-            nn.MaxPool2d((2, 2), 2),     
-            BottleneckCSP(c1=256, c2=512, n=1)    # P5/32
-        )
+def cspdarknet_x(pretrained=False, **kwargs):
+    """Constructs a CSPDarknet_X model.
 
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(512, num_classes)
-
-    def forward(self, x, targets=None):
-        x = self.layer_1(x)
-        x = self.layer_2(x)
-        x = self.layer_3(x)
-        x = self.layer_4(x)
-        x = self.layer_5(x)
-
-        x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc(x)
-
-        return x
+    Args:
+        pretrained (bool): If True, returns a model pre-trained on ImageNet
+    """
+    model = CSPDarknet_X()
+    if pretrained:
+        path_to_dir = os.path.dirname(os.path.abspath(__file__))
+        print('Loading the cspdarknet_x ...')
+        model.load_state_dict(torch.load(path_to_dir + '/weights/cspdarknet_x/cspdarknet_x.pth', map_location='cuda'), strict=False)
+    return model
 
 
 def cspdarknet_large(pretrained=False, **kwargs):
@@ -313,7 +334,7 @@ def cspdarknet_large(pretrained=False, **kwargs):
     if pretrained:
         path_to_dir = os.path.dirname(os.path.abspath(__file__))
         print('Loading the cspdarknet_large ...')
-        model.load_state_dict(torch.load(path_to_dir + '/weights/cspdarknet_large_75.42.pth', map_location='cuda'), strict=False)
+        model.load_state_dict(torch.load(path_to_dir + '/weights/cspdarknet_large/cspdarknet_large_72.55.pth', map_location='cuda'), strict=False)
     return model
 
 
@@ -327,7 +348,7 @@ def cspdarknet_medium(pretrained=False, **kwargs):
     if pretrained:
         path_to_dir = os.path.dirname(os.path.abspath(__file__))
         print('Loading the cspdarknet_medium ...')
-        model.load_state_dict(torch.load(path_to_dir + '/weights/cspdarknet_medium_75.42.pth', map_location='cuda'), strict=False)
+        model.load_state_dict(torch.load(path_to_dir + '/weights/cspdarknet_medium/cspdarknet_medium_71.06.pth', map_location='cuda'), strict=False)
     return model
 
 
@@ -341,21 +362,7 @@ def cspdarknet_small(pretrained=False, **kwargs):
     if pretrained:
         path_to_dir = os.path.dirname(os.path.abspath(__file__))
         print('Loading the cspdarknet_small ...')
-        model.load_state_dict(torch.load(path_to_dir + '/weights/cspdarknet_small_75.42.pth', map_location='cuda'), strict=False)
-    return model
-
-
-def cspdarknet_slim(pretrained=False, **kwargs):
-    """Constructs a CSPDarknet_slim model.
-
-    Args:
-        pretrained (bool): If True, returns a model pre-trained on ImageNet
-    """
-    model = CSPDarknet_slim()
-    if pretrained:
-        path_to_dir = os.path.dirname(os.path.abspath(__file__))
-        print('Loading the cspdarknet_slim ...')
-        model.load_state_dict(torch.load(path_to_dir + '/weights/cspdarknet_slim_75.42.pth', map_location='cuda'), strict=False)
+        model.load_state_dict(torch.load(path_to_dir + '/weights/cspdarknet_small/cspdarknet_small_70.31.pth', map_location='cuda'), strict=False)
     return model
 
 
@@ -369,5 +376,15 @@ def cspdarknet_tiny(pretrained=False, **kwargs):
     if pretrained:
         path_to_dir = os.path.dirname(os.path.abspath(__file__))
         print('Loading the cspdarknet_tiny ...')
-        model.load_state_dict(torch.load(path_to_dir + '/weights/cspdarknet_tiny_75.42.pth', map_location='cuda'), strict=False)
+        model.load_state_dict(torch.load(path_to_dir + '/weights/cspdarknet_tiny/cspdarknet_tiny.43.pth', map_location='cuda'), strict=False)
     return model
+
+
+if __name__ == '__main__':
+    import time
+    net = CSPDarknet_large()
+    x = torch.randn(1, 3, 224, 224)
+    t0 = time.time()
+    y = net(x)
+    t1 = time.time()
+    print('Time: ', t1 - t0)

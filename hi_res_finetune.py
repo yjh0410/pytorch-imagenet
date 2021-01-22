@@ -35,7 +35,7 @@ def fine_tune(name, batch_size, epochs, lr, resize, data):
     print_freq = 10
     best_acc1 = 0
     
-    save_folder = 'backbone/weights/'
+    save_folder = os.path.join('backbone/weights/', name)
 
     if torch.cuda.is_available:
         print('use cuda')
@@ -59,7 +59,7 @@ def fine_tune(name, batch_size, epochs, lr, resize, data):
     optimizer = torch.optim.SGD(model.parameters(), lr,
                                 momentum=momentum,
                                 weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,  milestones=[5, 8], gamma=0.1)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,  milestones=[3, 6], gamma=0.1)
 
 
     # Data loading code
@@ -153,6 +153,7 @@ def train(train_loader, model, criterion, optimizer, epoch, print_freq, device):
 
         if i % print_freq == 0:
             progress.display(i)
+
 
 def validate(val_loader, model, criterion, device, print_freq):
     batch_time = AverageMeter('Time', ':6.3f')
@@ -254,16 +255,27 @@ def accuracy(output, target, topk=(1,)):
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
 
+
 if __name__ == "__main__":
     # configuration
+    # hi_res_ft_cfg = {
+    #     'batch_size': 64,
+    #     'resize': 448,
+    #     'max_epoch': 10,
+    #     'lr': 1e-3,
+    #     'data_path': "./data/imagenet/",
+    #     'model_name': 'cspdarknet_tiny'
+    # }
+
     hi_res_ft_cfg = {
-        'batch_size': 64,
+        'batch_size': 32,
         'resize': 448,
         'max_epoch': 10,
         'lr': 1e-3,
         'data_path': "./data/imagenet/",
-        'model_name': 'cspdarknet_tiny'
+        'model_name': 'cspdarknet_large'
     }
+
 
     print("----------------------------------------Fine-tune--------------------------------------------")
     print("Firstly, before training OD, we need to fine-tune backbone network on high resolution images.")

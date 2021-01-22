@@ -33,7 +33,7 @@ parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                         ' (default: resnet18)')
 parser.add_argument('-j', '--workers', default=8, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
-parser.add_argument('--epochs', default=90, type=int, metavar='N',
+parser.add_argument('--epochs', default=120, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
@@ -46,8 +46,8 @@ parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
                     metavar='LR', help='initial learning rate', dest='lr')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                     help='momentum')
-parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
-                    metavar='W', help='weight decay (default: 1e-4)',
+parser.add_argument('--wd', '--weight-decay', default=5e-4, type=float,
+                    metavar='W', help='weight decay (default: 5e-4)',
                     dest='weight_decay')
 parser.add_argument('-p', '--print-freq', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')
@@ -118,8 +118,8 @@ def main_worker(args):
                                 weight_decay=args.weight_decay)
                                 
     # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,  milestones=[args.epochs//3, args.epochs//3*2], gamma=0.1)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,  milestones=[50, 70], gamma=0.1)
-    lr_epoch = [50, 70]
+    # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,  milestones=[60, 100], gamma=0.1)
+    lr_epoch = [60, 100]
     lr = args.lr
 
     cudnn.benchmark = True
@@ -157,6 +157,8 @@ def main_worker(args):
         validate(val_loader, model, criterion, args)
         return
 
+    print("total training epochs: %d " % (args.epochs))
+    print("lr step epoch: ", lr_epoch)
     for epoch in range(args.start_epoch, args.epochs):
         lr = adjust_learning_rate(optimizer, epoch, lr_epoch, lr, gamma=0.1)
         # acc1 = validate(val_loader, model, criterion, args)
