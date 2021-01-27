@@ -4,25 +4,6 @@ import torch.nn.functional as F
 import os
 
 
-@torch.jit.script
-def mish(x):
-    # from https://github.com/digantamisra98/Mish/blob/master/Mish/Torch/mish.py
-    '''
-    Applies the mish function element-wise:
-    mish(x) = x * tanh(softplus(x)) = x * tanh(ln(1 + exp(x)))
-    See additional documentation for mish class.
-    '''
-    return x * torch.tanh(F.softplus(x))
-
-
-class Mish(nn.Module):
-    # from https://github.com/digantamisra98/Mish/blob/master/Mish/Torch/mish.py
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x):
-        return mish(x)
-
 
 class Conv(nn.Module):
     def __init__(self, c1, c2, k, s=1, p=0, d=1, g=1, act=True):
@@ -30,7 +11,7 @@ class Conv(nn.Module):
         self.convs = nn.Sequential(
             nn.Conv2d(c1, c2, k, stride=s, padding=p, dilation=d, groups=g),
             nn.BatchNorm2d(c2),
-            Mish() if act else nn.Identity()
+            nn.LeakyReLU(0.1, inplace=True) if act else nn.Identity()
         )
 
     def forward(self, x):
@@ -79,7 +60,7 @@ class BottleneckCSP(nn.Module):
         self.cv3 = nn.Conv2d(c_, c_, kernel_size=1, bias=False)
         self.cv4 = Conv(2 * c_, c2, k=1)
         self.bn = nn.BatchNorm2d(2 * c_)  # applied to cat(cv2, cv3)
-        self.act = Mish()
+        self.act = nn.LeakyReLU(0.1, inplace=True)
         self.m = nn.Sequential(*[Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])
 
     def forward(self, x):

@@ -119,7 +119,7 @@ def main_worker(args):
                                 
     # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,  milestones=[args.epochs//3, args.epochs//3*2], gamma=0.1)
     # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,  milestones=[60, 100], gamma=0.1)
-    lr_epoch = [60, 100]
+    lr_epoch = [args.epochs // 2, args.epochs // 4 * 3]
     lr = args.lr
 
     cudnn.benchmark = True

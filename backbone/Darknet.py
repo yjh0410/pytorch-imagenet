@@ -367,7 +367,7 @@ def darknet19(pretrained=False, **kwargs):
     if pretrained:
         path_to_dir = os.path.dirname(os.path.abspath(__file__))
         print('Loading the darknet19 ...')
-        model.load_state_dict(torch.load(path_to_dir + '/weights/darknet19_72.96.pth', map_location='cuda'), strict=False)
+        model.load_state_dict(torch.load(path_to_dir + '/weights/darknet19/darknet19_72.96.pth', map_location='cuda'), strict=False)
     return model
 
 def darknet53(pretrained=False, **kwargs):
@@ -380,7 +380,7 @@ def darknet53(pretrained=False, **kwargs):
     if pretrained:
         path_to_dir = os.path.dirname(os.path.abspath(__file__))
         print('Loading the darknet53 ...')
-        model.load_state_dict(torch.load(path_to_dir + '/weights/darknet53_75.42.pth', map_location='cuda'), strict=False)
+        model.load_state_dict(torch.load(path_to_dir + '/weights/darknet53/darknet53_75.42.pth', map_location='cuda'), strict=False)
     return model
 
 def darknet_tiny(pretrained=False, **kwargs):
@@ -393,7 +393,7 @@ def darknet_tiny(pretrained=False, **kwargs):
     if pretrained:
         path_to_dir = os.path.dirname(os.path.abspath(__file__))
         print('Loading the darknet_tiny ...')
-        model.load_state_dict(torch.load(path_to_dir + '/weights/darknet_tiny_63.50_85.06.pth', map_location='cuda'), strict=False)
+        model.load_state_dict(torch.load(path_to_dir + '/weights/darknet_tiny/darknet_tiny_63.50_85.06.pth', map_location='cuda'), strict=False)
     return model
 
 def darknet_lite(pretrained=False, **kwargs):
@@ -406,7 +406,7 @@ def darknet_lite(pretrained=False, **kwargs):
     if pretrained:
         path_to_dir = os.path.dirname(os.path.abspath(__file__))
         print('Loading the darknet_lite ...')
-        model.load_state_dict(torch.load(path_to_dir + '/weights/darknet_lite_48.02_72.32.pth', map_location='cuda'), strict=False)
+        model.load_state_dict(torch.load(path_to_dir + '/weights/darknet_lite/darknet_lite_48.02_72.32.pth', map_location='cuda'), strict=False)
     return model
 
 def darknet_light(pretrained=False, **kwargs):
@@ -419,5 +419,5 @@ def darknet_light(pretrained=False, **kwargs):
     if pretrained:
         path_to_dir = os.path.dirname(os.path.abspath(__file__))
         print('Loading the darknet_light ...')
-        model.load_state_dict(torch.load(path_to_dir + '/weights/darknet_light_90_58.99.pth', map_location='cuda'))
+        model.load_state_dict(torch.load(path_to_dir + '/weights/darknet_light/darknet_light_90_58.99.pth', map_location='cuda'))
     return model

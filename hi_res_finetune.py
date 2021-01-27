@@ -258,23 +258,23 @@ def accuracy(output, target, topk=(1,)):
 
 if __name__ == "__main__":
     # configuration
-    # hi_res_ft_cfg = {
-    #     'batch_size': 64,
-    #     'resize': 448,
-    #     'max_epoch': 10,
-    #     'lr': 1e-3,
-    #     'data_path': "./data/imagenet/",
-    #     'model_name': 'cspdarknet_tiny'
-    # }
-
     hi_res_ft_cfg = {
-        'batch_size': 32,
+        'batch_size': 64,
         'resize': 448,
         'max_epoch': 10,
         'lr': 1e-3,
         'data_path': "./data/imagenet/",
-        'model_name': 'cspdarknet_large'
+        'model_name': 'cspdarknet_tiny'
     }
+
+    # hi_res_ft_cfg = {
+    #     'batch_size': 32,
+    #     'resize': 448,
+    #     'max_epoch': 10,
+    #     'lr': 1e-3,
+    #     'data_path': "./data/imagenet/",
+    #     'model_name': 'cspdarknet_large'
+    # }
 
 
     print("----------------------------------------Fine-tune--------------------------------------------")
