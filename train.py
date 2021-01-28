@@ -104,6 +104,7 @@ def main_worker(args):
     # DistributedDataParallel will divide and allocate batch_size to all
     # available GPUs if device_ids are not set
     # model = torch.nn.parallel.DistributedDataParallel(model)
+    # torch.save(model.state_dict(), save_folder+'/'+ str(args.arch) + '_' + str(0)+'.pth')
 
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().to(device)
@@ -119,7 +120,10 @@ def main_worker(args):
                                 
     # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,  milestones=[args.epochs//3, args.epochs//3*2], gamma=0.1)
     # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,  milestones=[60, 100], gamma=0.1)
-    lr_epoch = [args.epochs // 2, args.epochs // 4 * 3]
+    if args.epochs == 90:
+        lr_epoch = [30, 60]
+    else:
+        lr_epoch = [args.epochs // 2, args.epochs // 4 * 3]
     lr = args.lr
 
     cudnn.benchmark = True

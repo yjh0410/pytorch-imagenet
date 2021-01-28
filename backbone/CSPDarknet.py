@@ -97,7 +97,7 @@ class CSPDarknet_X(nn.Module):
             
         self.layer_1 = nn.Sequential(
             Focus(c1=3, c2=64, k=3, p=1),      
-            BottleneckCSP(c1=64, c2=64, n=1)      # P1/2
+            ResBlock(c1=64, n=1)                    # P1/2
         )
         self.layer_2 = nn.Sequential(
             Conv(c1=64, c2=128, k=3, p=1, s=2),     
@@ -142,7 +142,7 @@ class CSPDarknet_large(nn.Module):
             
         self.layer_1 = nn.Sequential(
             Focus(c1=3, c2=64, k=3, p=1),      
-            BottleneckCSP(c1=64, c2=64, n=1)      # P1/2
+            ResBlock(c1=64, n=1)                    # P1/2
         )
         self.layer_2 = nn.Sequential(
             Conv(c1=64, c2=128, k=3, p=1, s=2),     
@@ -184,7 +184,7 @@ class CSPDarknet_medium(nn.Module):
             
         self.layer_1 = nn.Sequential(
             Focus(c1=3, c2=64, k=3, p=1),      
-            BottleneckCSP(c1=64, c2=64, n=1)      # P1/2
+            ResBlock(c1=64, n=1)                    # P1/2
         )
         self.layer_2 = nn.Sequential(
             Conv(c1=64, c2=128, k=3, p=1, s=2),     
@@ -226,7 +226,7 @@ class CSPDarknet_small(nn.Module):
             
         self.layer_1 = nn.Sequential(
             Focus(c1=3, c2=64, k=3, p=1),      
-            BottleneckCSP(c1=64, c2=64, n=1)      # P1/2
+            ResBlock(c1=64, n=1)                    # P1/2
         )
         self.layer_2 = nn.Sequential(
             Conv(c1=64, c2=128, k=3, p=1, s=2),     
@@ -268,7 +268,7 @@ class CSPDarknet_slim(nn.Module):
             
         self.layer_1 = nn.Sequential(
             Focus(c1=3, c2=32, k=3, p=1),      
-            BottleneckCSP(c1=32, c2=32, n=1)      # P1/2
+            ResBlock(c1=32, n=1)                    # P1/2
         )
         self.layer_2 = nn.Sequential(
             Conv(c1=32, c2=64, k=3, p=1, s=2),     
