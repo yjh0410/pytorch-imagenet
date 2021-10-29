@@ -122,13 +122,13 @@ def main_worker(args):
         print('continue training ...')
         model.load_state_dict(torch.load(args.resume))
 
+    lr_epoch = args.lr_epoch
+    lr = args.lr
+
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
                                 
-    lr_epoch = args.lr_epoch
-    lr = args.lr
-
     # Data loading code
     traindir = os.path.join(args.data_root, 'train')
     valdir = os.path.join(args.data_root, 'val')
@@ -192,14 +192,15 @@ def train(train_loader, model, criterion, optimizer, epoch, lr, epoch_size, args
     losses = AverageMeter('Loss', ':.4e')
     top1 = AverageMeter('Acc@1', ':6.2f')
     top5 = AverageMeter('Acc@5', ':6.2f')
+    lrp = AverageMeter('lr', ':6f')
     progress = ProgressMeter(
         len(train_loader),
-        [batch_time, data_time, losses, top1, top5, ' [lr: ] %f' % 0.],
+        [batch_time, data_time, losses, top1, top5, lrp],
         prefix="Epoch: [{}]".format(epoch))
 
+    lrp.update(lr)
     # switch to train mode
     model.train()
-
     end = time.time()
     for i, (images, target) in enumerate(train_loader):
         # warmup
@@ -208,10 +209,12 @@ def train(train_loader, model, criterion, optimizer, epoch, lr, epoch_size, args
             nw = args.wp_epoch * epoch_size
             lr = args.lr * pow(ni / nw, 4)
             set_lr(optimizer, lr)
+            lrp.update(lr)
         elif epoch == args.wp_epoch and i == 0:
             # warmup is over
             lr = args.lr
             set_lr(optimizer, lr)
+            lrp.update(lr)
 
         # measure data loading time
         data_time.update(time.time() - end)
