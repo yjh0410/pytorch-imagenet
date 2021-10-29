@@ -24,31 +24,17 @@ model_names = sorted(name for name in models.__dict__
     and callable(models.__dict__[name]))
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-parser.add_argument('data', metavar='DIR', default='./data/imagenet/',
-                    help='path to dataset')
-parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
-                    choices=model_names,
-                    help='model architecture: ' +
-                        ' | '.join(model_names) +
-                        ' (default: resnet18)')
+# basic
 parser.add_argument('-j', '--workers', default=8, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
-parser.add_argument('--epochs', default=120, type=int, metavar='N',
+parser.add_argument('--max_epoch', default=90, type=int, metavar='N',
+                    help='number of total epochs to run')
+parser.add_argument('--lr_epoch', nargs='+', default=[30, 60], type=int,
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
-parser.add_argument('-b', '--batch-size', default=64, type=int,
-                    metavar='N',
-                    help='mini-batch size (default: 256), this is the total '
-                         'batch size of all GPUs on the current node when '
-                         'using Data Parallel or Distributed Data Parallel')
-parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
-                    metavar='LR', help='initial learning rate', dest='lr')
-parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
-                    help='momentum')
-parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
-                    metavar='W', help='weight decay (default: 1e-4)',
-                    dest='weight_decay')
+parser.add_argument('--batch-size', default=256, type=int, metavar='N',
+                    help='mini-batch size (default: 256), this is the total ')
 parser.add_argument('-p', '--print-freq', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
@@ -62,8 +48,33 @@ parser.add_argument('--seed', default=None, type=int,
 parser.add_argument('--save_folder', default='weights/', type=str,
                     help='path to save model. ')
 
+# optimizer
+parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
+                    metavar='LR', help='initial learning rate', dest='lr')
+parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
+                    help='momentum')
+parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
+                    metavar='W', help='weight decay (default: 1e-4)',
+                    dest='weight_decay')
+
+# dataset
+parser.add_argument('--data_root', metavar='DIR', default='./data/imagenet/',
+                    help='path to dataset')
+
+# model
+parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
+                    choices=model_names,
+                    help='model architecture: ' +
+                        ' | '.join(model_names) +
+                        ' (default: resnet18)')
+
+# warmup
+parser.add_argument('--wp_epoch', default=1, type=int, 
+                    help='iteration of warmup stage')
+
 best_acc1 = 0
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+cudnn.benchmark = True
 
 
 def main():
@@ -102,10 +113,6 @@ def main_worker(args):
         print(model)
         
     model.to(device)
-    # DistributedDataParallel will divide and allocate batch_size to all
-    # available GPUs if device_ids are not set
-    # model = torch.nn.parallel.DistributedDataParallel(model)
-    # torch.save(model.state_dict(), save_folder+'/'+ str(args.arch) + '_' + str(0)+'.pth')
 
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().to(device)
@@ -119,22 +126,15 @@ def main_worker(args):
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
                                 
-    # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,  milestones=[args.epochs//3, args.epochs//3*2], gamma=0.1)
-    # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,  milestones=[60, 100], gamma=0.1)
-    if args.epochs == 90:
-        lr_epoch = [30, 60]
-    else:
-        lr_epoch = [args.epochs // 2, args.epochs // 4 * 3]
+    lr_epoch = args.lr_epoch
     lr = args.lr
 
-    cudnn.benchmark = True
-
     # Data loading code
-    traindir = os.path.join(args.data, 'train')
-    valdir = os.path.join(args.data, 'val')
+    traindir = os.path.join(args.data_root, 'train')
+    valdir = os.path.join(args.data_root, 'val')
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
-
+    # dataset
     train_dataset = datasets.ImageFolder(
         traindir,
         transforms.Compose([
@@ -162,14 +162,18 @@ def main_worker(args):
         validate(val_loader, model, criterion, args)
         return
 
-    print("total training epochs: %d " % (args.epochs))
+    epoch_size = len(train_dataset) // args.batch_size
+    print("total training epochs: %d " % (args.max_epoch))
     print("lr step epoch: ", lr_epoch)
-    for epoch in range(args.start_epoch, args.epochs):
-        lr = adjust_learning_rate(optimizer, epoch, lr_epoch, lr, gamma=0.1)
-        # acc1 = validate(val_loader, model, criterion, args)
-        # exit()
+    for epoch in range(args.start_epoch, args.max_epoch):
+        # use step lr decay
+        if epoch in args.lr_epoch:
+            print('lr decay ...')
+            lr = lr * 0.1
+            set_lr(optimizer, lr)
+
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch, lr, args)
+        lr = train(train_loader, model, criterion, optimizer, epoch, lr, epoch_size, args)
 
         # evaluate on validation set
         acc1 = validate(val_loader, model, criterion, args)
@@ -180,18 +184,8 @@ def main_worker(args):
         if is_best:
             torch.save(model.state_dict(), save_folder+'/'+ str(args.arch) + '_' + str(epoch + 1)+'_'+str(acc1.item())+'.pth')
 
-        # save_checkpoint({
-        #     'epoch': epoch + 1,
-        #     'arch': args.arch,
-        #     'state_dict': model.state_dict(),
-        #     'best_acc1': best_acc1,
-        #     'optimizer' : optimizer.state_dict(),
-        # }, is_best)
 
-        # scheduler.step()
-
-
-def train(train_loader, model, criterion, optimizer, epoch, lr, args):
+def train(train_loader, model, criterion, optimizer, epoch, lr, epoch_size, args):
     print("start training ......")
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
@@ -200,7 +194,7 @@ def train(train_loader, model, criterion, optimizer, epoch, lr, args):
     top5 = AverageMeter('Acc@5', ':6.2f')
     progress = ProgressMeter(
         len(train_loader),
-        [batch_time, data_time, losses, top1, top5, ' [learning rate : ] %f' % lr],
+        [batch_time, data_time, losses, top1, top5, ' [lr: ] %f' % 0.],
         prefix="Epoch: [{}]".format(epoch))
 
     # switch to train mode
@@ -208,6 +202,17 @@ def train(train_loader, model, criterion, optimizer, epoch, lr, args):
 
     end = time.time()
     for i, (images, target) in enumerate(train_loader):
+        # warmup
+        ni = i + epoch * epoch_size
+        if epoch < args.wp_epoch:
+            nw = args.wp_epoch * epoch_size
+            lr = args.lr * pow(ni / nw, 4)
+            set_lr(optimizer, lr)
+        elif epoch == args.wp_epoch and i == 0:
+            # warmup is over
+            lr = args.lr
+            set_lr(optimizer, lr)
+
         # measure data loading time
         data_time.update(time.time() - end)
 
@@ -236,6 +241,8 @@ def train(train_loader, model, criterion, optimizer, epoch, lr, args):
 
         if i % args.print_freq == 0:
             progress.display(i)
+
+    return lr
 
 
 def validate(val_loader, model, criterion, args):
@@ -328,15 +335,9 @@ class ProgressMeter(object):
         return '[' + fmt + '/' + fmt.format(num_batches) + ']'
 
 
-def adjust_learning_rate(optimizer, epoch, lr_epoch, lr, gamma=0.1):
-    """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
-    if epoch in lr_epoch:
-        print('lr decay ...')
-        lr = lr * gamma
-        for param_group in optimizer.param_groups:
-            param_group['lr'] = lr
-
-    return lr
+def set_lr(optimizer, lr):
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
 
 
 def accuracy(output, target, topk=(1,)):
@@ -351,7 +352,7 @@ def accuracy(output, target, topk=(1,)):
 
         res = []
         for k in topk:
-            correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
+            correct_k = correct[:k].contiguous().view(-1).float().sum(0, keepdim=True)
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
 
