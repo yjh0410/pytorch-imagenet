@@ -82,8 +82,7 @@ def main():
     args = parser.parse_args()
 
     save_folder = os.path.join(args.save_folder, args.arch)
-    if not os.path.exists(save_folder):
-        os.mkdir(save_folder)
+    os.makedirs(save_folder, exist_ok=True)
 
     if args.seed is not None:
         random.seed(args.seed)
