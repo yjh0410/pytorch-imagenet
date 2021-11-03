@@ -85,6 +85,7 @@ def convmixer_1536_20(pretrained=False, **kwargs):
     model = ConvMixer(dim=1536, depth=20)
     return model
 
+
 if __name__ == '__main__':
     x = torch.randn(2, 3, 640, 640)
     model = ConvMixer(dim=256, depth=10, num_classes=1000)
