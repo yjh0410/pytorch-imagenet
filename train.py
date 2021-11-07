@@ -49,6 +49,8 @@ parser.add_argument('--save_folder', default='weights/', type=str,
                     help='path to save model. ')
 
 # optimizer
+parser.add_argument('--optimizer', default='sgd', type=str,
+                    help='optimizer')
 parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
                     metavar='LR', help='initial learning rate', dest='lr')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
@@ -124,10 +126,17 @@ def main_worker(args):
     lr_epoch = args.lr_epoch
     lr = args.lr
 
-    optimizer = torch.optim.SGD(model.parameters(), args.lr,
-                                momentum=args.momentum,
-                                weight_decay=args.weight_decay)
-                                
+    if args.optimizer == 'sgd':
+        print('Optimizer: SGD')
+        optimizer = torch.optim.SGD(model.parameters(), args.lr,
+                                    momentum=args.momentum,
+                                    weight_decay=args.weight_decay)
+
+    elif args.optimizer == 'adamw':
+        print('Optimizer: AdamW')
+        optimizer = torch.optim.AdamW(model.parameters(), args.lr,
+                                    weight_decay=args.weight_decay)
+
     # Data loading code
     traindir = os.path.join(args.data_root, 'train')
     valdir = os.path.join(args.data_root, 'val')

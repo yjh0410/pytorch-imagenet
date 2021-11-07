@@ -2,8 +2,6 @@ import torch
 import torch.nn as nn
 
 
-__all__ = ['convmixer_256_32', 'convmixer_512_32', 'convmixer_1024_20', 'convmixer_1536_20']
-
 
 class Conv(nn.Module):
     def __init__(self, c1, c2, k, s=1, p=0, d=1, g=1, act=True, bias=False):
@@ -24,26 +22,33 @@ class Conv(nn.Module):
         return self.convs(x)
 
 
-class Bottleneck(nn.Module):
+class Residual(nn.Module):
+    def __init__(self, fn):
+        super().__init__()
+        self.fn = fn
+    
+    def forward(self, x):
+        return x + self.fn(x)
+
+
+class ConvMixerBlock(nn.Module):
     # Standard bottleneck
     def __init__(self, dim, kernel_size, padding, e=0.5, act=True):
-        super(Bottleneck, self).__init__()
-        dim_ = int(dim * e)
-        self.branch = nn.Sequential(
-            Conv(dim, dim_, k=1, act=False),
-            Conv(dim_, dim_, k=kernel_size, p=padding, act=act),
-            Conv(dim_, dim, k=1, act=act)
+        super(ConvMixerBlock, self).__init__()
+        self.block = nn.Sequential(
+            Residual(Conv(dim, dim, k=kernel_size, p=padding, g=dim, act=act)),
+            Conv(dim, dim, k=1)
         )
-
+        
     def forward(self, x):
-        return x + self.branch(x)
+        return self.block(x)
 
 
 class ConvMixer(nn.Module):
     def __init__(self, dim=512, depth=1, num_classes=1000):
         super().__init__()
         self.patch_embedding = Conv(3, dim, k=32, s=32)
-        self.blocks = nn.Sequential(*[Bottleneck(dim=dim, kernel_size=7, padding=3) for _ in range(depth)])
+        self.blocks = nn.Sequential(*[ConvMixerBlock(dim=dim, kernel_size=7, padding=3) for _ in range(depth)])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(dim, num_classes)
 
@@ -56,12 +61,12 @@ class ConvMixer(nn.Module):
         return x
 
 
-def convmixer_256_32(pretrained=False, **kwargs):
-    model = ConvMixer(dim=256, depth=32)
+def convmixer_384_32(pretrained=False, **kwargs):
+    model = ConvMixer(dim=384, depth=32)
     return model
 
-def convmixer_512_32(pretrained=False, **kwargs):
-    model = ConvMixer(dim=512, depth=32)
+def convmixer_768_32(pretrained=False, **kwargs):
+    model = ConvMixer(dim=768, depth=32)
     return model
 
 def convmixer_1024_20(pretrained=False, **kwargs):
@@ -75,5 +80,5 @@ def convmixer_1536_20(pretrained=False, **kwargs):
 
 if __name__ == '__main__':
     x = torch.randn(2, 3, 640, 640)
-    model = ConvMixer(dim=256, depth=10, num_classes=1000)
+    model = convmixer_384_32()
     y = model(x)
