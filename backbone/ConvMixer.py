@@ -9,8 +9,8 @@ class Conv(nn.Module):
         if act:
             self.convs = nn.Sequential(
                 nn.Conv2d(c1, c2, k, stride=s, padding=p, dilation=d, groups=g, bias=bias),
-                nn.ReLU(inplace=True),
-                nn.BatchNorm2d(c2)
+                nn.BatchNorm2d(c2),
+                nn.ReLU(inplace=True)
             )
         else:
             self.convs = nn.Sequential(
@@ -22,33 +22,26 @@ class Conv(nn.Module):
         return self.convs(x)
 
 
-class Residual(nn.Module):
-    def __init__(self, fn):
-        super().__init__()
-        self.fn = fn
-    
-    def forward(self, x):
-        return x + self.fn(x)
-
-
-class ConvMixerBlock(nn.Module):
+class Bottleneck(nn.Module):
     # Standard bottleneck
-    def __init__(self, dim, kernel_size, padding, e=0.5, act=True):
-        super(ConvMixerBlock, self).__init__()
-        self.block = nn.Sequential(
-            Residual(Conv(dim, dim, k=kernel_size, p=padding, g=dim, act=act)),
-            Conv(dim, dim, k=1)
+    def __init__(self, c, k=7, p=3, e=0.5, act='relu'):
+        super(Bottleneck, self).__init__()
+        c_ = int(c * e)
+        self.branch = nn.Sequential(
+            Conv(c, c_, k=1, act=act),
+            Conv(c_, c_, k=k, p=p, act=act),
+            Conv(c_, c, k=1, act=act)
         )
-        
+
     def forward(self, x):
-        return self.block(x)
+        return x + self.branch(x)
 
 
 class ConvMixer(nn.Module):
     def __init__(self, dim=512, depth=1, num_classes=1000):
         super().__init__()
         self.patch_embedding = Conv(3, dim, k=32, s=32)
-        self.blocks = nn.Sequential(*[ConvMixerBlock(dim=dim, kernel_size=7, padding=3) for _ in range(depth)])
+        self.blocks = nn.Sequential(*[Bottleneck(c=dim, k=7, p=3) for _ in range(depth)])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(dim, num_classes)
 

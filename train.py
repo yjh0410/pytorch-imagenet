@@ -3,6 +3,7 @@ import os
 import random
 import shutil
 import time
+import math
 import warnings
 
 import torch
@@ -16,7 +17,7 @@ import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
-# import torchvision.models as models
+from utils.misc import ModelEMA
 import backbone as models
 
 model_names = sorted(name for name in models.__dict__
@@ -47,10 +48,17 @@ parser.add_argument('--seed', default=None, type=int,
                     help='seed for initializing training. ')
 parser.add_argument('--save_folder', default='weights/', type=str,
                     help='path to save model. ')
-
+parser.add_argument('--ema', action='store_true', default=False,
+                    help='use ema training trick')
+# warmup
+parser.add_argument('--wp_epoch', default=1, type=int, 
+                    help='iteration of warmup stage')
+# lr schedule
+parser.add_argument('--lr_schedule', default='step', type=str,
+                    help='step, cos. ')
 # optimizer
 parser.add_argument('--optimizer', default='sgd', type=str,
-                    help='optimizer')
+                    help='sgd, adamw')
 parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
                     metavar='LR', help='initial learning rate', dest='lr')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
@@ -58,21 +66,17 @@ parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
                     metavar='W', help='weight decay (default: 1e-4)',
                     dest='weight_decay')
-
 # dataset
 parser.add_argument('--data_root', metavar='DIR', default='./data/imagenet/',
                     help='path to dataset')
-
 # model
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                     choices=model_names,
                     help='model architecture: ' +
                         ' | '.join(model_names) +
                         ' (default: resnet18)')
-
-# warmup
-parser.add_argument('--wp_epoch', default=1, type=int, 
-                    help='iteration of warmup stage')
+parser.add_argument('--clip_max_norm', default=-1.0, type=float,
+                    help='gradient clipping max norm')
 
 best_acc1 = 0
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -126,6 +130,7 @@ def main_worker(args):
     lr_epoch = args.lr_epoch
     lr = args.lr
 
+    # optimizer
     if args.optimizer == 'sgd':
         print('Optimizer: SGD')
         optimizer = torch.optim.SGD(model.parameters(), args.lr,
@@ -137,51 +142,66 @@ def main_worker(args):
         optimizer = torch.optim.AdamW(model.parameters(), args.lr,
                                     weight_decay=args.weight_decay)
 
-    # Data loading code
+    # data dir
     traindir = os.path.join(args.data_root, 'train')
     valdir = os.path.join(args.data_root, 'val')
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225])
-    # dataset
+
+    # train dataset and dataloader
     train_dataset = datasets.ImageFolder(
         traindir,
         transforms.Compose([
             transforms.RandomResizedCrop(224),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
-            normalize,
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            transforms.RandomErasing()
         ]))
-
-    train_sampler = None
-
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
-        num_workers=args.workers, pin_memory=True, sampler=train_sampler)
-    val_loader = torch.utils.data.DataLoader(
-        datasets.ImageFolder(valdir, transforms.Compose([
+                        train_dataset, 
+                        batch_size=args.batch_size, 
+                        shuffle=True,
+                        num_workers=args.workers, 
+                        pin_memory=True)
+    # val dataset and dataloader
+    val_dataset = datasets.ImageFolder(
+        valdir, 
+        transforms.Compose([
             transforms.Resize(256),
             transforms.CenterCrop(224),
             transforms.ToTensor(),
-            normalize,
-        ])),
-        batch_size=args.batch_size, shuffle=False,
-        num_workers=args.workers, pin_memory=True)
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ]))                  
+    val_loader = torch.utils.data.DataLoader(
+                        val_dataset,
+                        batch_size=args.batch_size, 
+                        shuffle=False,
+                        num_workers=args.workers, 
+                        pin_memory=True)
+
     if args.evaluate:
         validate(val_loader, model, criterion, args)
         return
+
+    # EMA
+    ema = ModelEMA(model) if args.ema else None
 
     epoch_size = len(train_dataset) // args.batch_size
     print("total training epochs: %d " % (args.max_epoch))
     print("lr step epoch: ", lr_epoch)
     for epoch in range(args.start_epoch, args.max_epoch):
         # use step lr decay
-        if epoch in args.lr_epoch:
-            print('lr decay ...')
-            lr = lr * 0.1
+        if args.lr_schedule == 'step':
+            if epoch in args.lr_epoch:
+                print('lr decay ...')
+                lr = lr * 0.1
+                set_lr(optimizer, lr)
+        # use cos lr decay
+        elif args.lr_schedule == 'cos':
+            lr = 1e-5 + 0.5*(lr - 1e-5)*(1 + math.cos(math.pi*epoch / args.max_epoch))
             set_lr(optimizer, lr)
 
         # train for one epoch
-        lr = train(train_loader, model, criterion, optimizer, epoch, lr, epoch_size, args)
+        lr = train(train_loader, ema, model, criterion, optimizer, epoch, lr, epoch_size, args)
 
         # evaluate on validation set
         acc1 = validate(val_loader, model, criterion, args)
@@ -193,7 +213,7 @@ def main_worker(args):
             torch.save(model.state_dict(), save_folder+'/'+ str(args.arch) + '_' + str(epoch + 1)+'_'+str(acc1.item())+'.pth')
 
 
-def train(train_loader, model, criterion, optimizer, epoch, lr, epoch_size, args):
+def train(train_loader, ema, model, criterion, optimizer, epoch, lr, epoch_size, args):
     print("start training ......")
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
@@ -244,7 +264,13 @@ def train(train_loader, model, criterion, optimizer, epoch, lr, epoch_size, args
         # compute gradient and do SGD step
         optimizer.zero_grad()
         loss.backward()
+        if args.clip_max_norm > 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_max_norm)
         optimizer.step()
+
+        # ema update
+        if args.ema:
+            ema.update(model)
 
         # measure elapsed time
         batch_time.update(time.time() - end)
