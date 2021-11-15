@@ -187,7 +187,11 @@ def main_worker(args):
 
     epoch_size = len(train_dataset) // args.batch_size
     print("total training epochs: %d " % (args.max_epoch))
-    print("lr step epoch: ", lr_epoch)
+    if args.lr_schedule == 'step':
+        print("lr step epoch: ", lr_epoch)
+    elif args.lr_schedule == 'cos':
+        print("Cos lr schedule")
+
     for epoch in range(args.start_epoch, args.max_epoch):
         # use step lr decay
         if args.lr_schedule == 'step':
