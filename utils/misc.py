@@ -1,12 +1,26 @@
 import torch
 import torch.nn as nn
 import math
+from thop import profile
 from copy import deepcopy
 
 
 def is_parallel(model):
     # Returns True if model is of type DP or DDP
     return type(model) in (nn.parallel.DataParallel, nn.parallel.DistributedDataParallel)
+
+
+def FLOPs_and_Params(model, size, device):
+    x = torch.randn(1, 3, size, size).to(device)
+
+    flops, params = profile(model, inputs=(x, ))
+    print('FLOPs : ', flops / 1e9, ' G')
+    print('Params : ', params / 1e6, ' M')
+
+
+if __name__ == "__main__":
+    pass
+
 
 
 # Exponential Moving Average for model

@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from transformer import TransformerEncoder
+from .transformer import TransformerEncoder
 
 
 class ViT(nn.Module):
@@ -19,10 +19,7 @@ class ViT(nn.Module):
         self.num_classes = num_classes
         num_patches = (img_size // patch_size) ** 2
         # patch embedding
-        self.patch_embedding = nn.Sequential(
-            nn.Conv2d(3, hidden_dim, kernel_size=patch_size, stride=patch_size),
-            nn.Conv2d(hidden_dim, hidden_dim, kernel_size=7, padding=3, stride=1)
-        ) 
+        self.patch_embedding = nn.Conv2d(3, hidden_dim, kernel_size=patch_size, stride=patch_size) 
         
         self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, hidden_dim))
         self.cls_token = nn.Parameter(torch.randn(1, 1, hidden_dim))
@@ -66,13 +63,43 @@ class ViT(nn.Module):
         return self.out(x)
 
 
-def vit(pretrained=False, **kwargs):
+def vit_b(pretrained=False, **kwargs):
     model = ViT(img_size=224,
                 patch_size=16,
-                hidden_dim=256,
-                num_heads=8,
-                depth=6,
-                mlp_dim=2048,
+                hidden_dim=768,
+                num_heads=12,
+                depth=12,
+                mlp_dim=3072,
+                dropout=0.1,
+                embed_dropout=0.1,
+                pool='cls',
+                num_classes=1000)
+
+    return model
+
+
+def vit_l(pretrained=False, **kwargs):
+    model = ViT(img_size=224,
+                patch_size=16,
+                hidden_dim=1024,
+                num_heads=16,
+                depth=24,
+                mlp_dim=4096,
+                dropout=0.1,
+                embed_dropout=0.1,
+                pool='cls',
+                num_classes=1000)
+
+    return model
+
+
+def vit_h(pretrained=False, **kwargs):
+    model = ViT(img_size=224,
+                patch_size=16,
+                hidden_dim=1280,
+                num_heads=16,
+                depth=32,
+                mlp_dim=5120,
                 dropout=0.1,
                 embed_dropout=0.1,
                 pool='cls',

@@ -17,7 +17,7 @@ import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
-from utils.misc import ModelEMA
+from utils.misc import ModelEMA, FLOPs_and_Params
 import backbone as models
 
 model_names = sorted(name for name in models.__dict__
@@ -118,6 +118,9 @@ def main_worker(args):
         print(model)
         
     model.to(device)
+
+    # FLOPs and Params
+    FLOPs_and_Params(model, size=224, device=device)
 
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().to(device)
