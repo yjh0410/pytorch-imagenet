@@ -21,7 +21,9 @@ class ViT(nn.Module):
         # patch embedding
         self.patch_embedding = nn.Sequential(
             nn.Conv2d(3, hidden_dim, kernel_size=patch_size, stride=patch_size),
-            nn.Conv2d(hidden_dim, hidden_dim, kernel_size=7, padding=3, stride=1)
+            nn.Conv2d(hidden_dim, hidden_dim, kernel_size=3, padding=1, stride=1),
+            nn.Conv2d(hidden_dim, hidden_dim, kernel_size=3, padding=1, stride=1),
+            nn.Conv2d(hidden_dim, hidden_dim, kernel_size=3, padding=1, stride=1)
         )
         
         self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, hidden_dim))
@@ -68,10 +70,10 @@ class ViT(nn.Module):
 def vit_t(pretrained=False, **kwargs):
     model = ViT(img_size=224,
                 patch_size=16,
-                hidden_dim=384,
-                num_heads=8,
-                depth=6,
-                mlp_dim=2048,
+                hidden_dim=192,
+                num_heads=3,
+                depth=12,
+                mlp_dim=768,
                 dropout=0.1,
                 embed_dropout=0.1,
                 pool='cls',
@@ -83,9 +85,9 @@ def vit_t(pretrained=False, **kwargs):
 def vit_s(pretrained=False, **kwargs):
     model = ViT(img_size=224,
                 patch_size=16,
-                hidden_dim=512,
-                num_heads=8,
-                depth=8,
+                hidden_dim=384,
+                num_heads=6,
+                depth=12,
                 mlp_dim=2048,
                 dropout=0.1,
                 embed_dropout=0.1,
@@ -101,7 +103,7 @@ def vit_m(pretrained=False, **kwargs):
                 hidden_dim=768,
                 num_heads=12,
                 depth=12,
-                mlp_dim=2048,
+                mlp_dim=3072,
                 dropout=0.1,
                 embed_dropout=0.1,
                 pool='cls',
