@@ -88,7 +88,7 @@ def vit_s(pretrained=False, **kwargs):
                 hidden_dim=384,
                 num_heads=6,
                 depth=12,
-                mlp_dim=2048,
+                mlp_dim=1536,
                 dropout=0.1,
                 embed_dropout=0.1,
                 pool='cls',
@@ -97,7 +97,7 @@ def vit_s(pretrained=False, **kwargs):
     return model
 
 
-def vit_m(pretrained=False, **kwargs):
+def vit_b(pretrained=False, **kwargs):
     model = ViT(img_size=224,
                 patch_size=16,
                 hidden_dim=768,
@@ -117,8 +117,8 @@ def vit_l(pretrained=False, **kwargs):
                 patch_size=16,
                 hidden_dim=1024,
                 num_heads=16,
-                depth=16,
-                mlp_dim=2048,
+                depth=24,
+                mlp_dim=4096,
                 dropout=0.1,
                 embed_dropout=0.1,
                 pool='cls',
@@ -129,6 +129,6 @@ def vit_l(pretrained=False, **kwargs):
 
 if __name__ == "__main__":
     x = torch.randn(2, 3, 224, 224)
-    model = vit()
+    model = vit_t()
     y = model(x)
     print(y.size())
