@@ -10,7 +10,7 @@ class Conv(nn.Module):
             self.convs = nn.Sequential(
                 nn.Conv2d(c1, c2, k, stride=s, padding=p, dilation=d, groups=g, bias=bias),
                 nn.BatchNorm2d(c2),
-                nn.Mish(inplace=True)
+                nn.LeakyReLU(0.1, inplace=True)
             )
         else:
             self.convs = nn.Sequential(
